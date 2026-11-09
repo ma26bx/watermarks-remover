@@ -3,7 +3,7 @@
 *
 !scripts/
 !scripts/**
-
+!mcp_server.py
 # Never ship build/runtime junk even though it sits under scripts/
 **/__pycache__/
 *.pyc
