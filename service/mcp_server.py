@@ -6,6 +6,7 @@ import json
 import os
 from http import HTTPStatus
 from http.server import ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import urlparse
 
 import server as core
@@ -207,7 +208,15 @@ class MCPHandler(OAuthMixin, core.Handler):
         self._respond(HTTPStatus.OK, response)
 
 
+def configure_clean_strategy():
+    """Load the rewrite strategy for MCP as well as the standalone HTTP server."""
+    configured = os.environ.get("WATERMARKS_CLEAN_STRATEGY_FILE")
+    path = Path(configured) if configured else Path(core.__file__).with_name("clean_strategy.json")
+    core._DEFAULT_STRATEGY = core._load_default_strategy(path)
+
+
 if __name__ == "__main__":
+    configure_clean_strategy()
     host = os.environ.get("WATERMARKS_SERVER_HOST", "0.0.0.0")
     port = int(os.environ.get("PORT", "8765"))
 
