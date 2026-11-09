@@ -53,7 +53,9 @@ uma nova implantação, a conexão pode pedir autorização novamente. Os client
 DCR continuam válidos enquanto a chave e o endereço público forem mantidos.
 Trocar a chave invalida clientes e tokens existentes.
 
-O formulário exige cookie seguro, origem correta e chave do proprietário.
+O formulário exige cookie seguro, código de sessão imprevisível e chave do
+proprietário. Origens externas explícitas são recusadas. Aplicativos que não
+enviam Origin ou enviam `null` são aceitos somente com a mesma sessão válida.
 Há limite global de dez tentativas de chave incorreta por minuto. Os logs do
 MCP omitem query strings e corpos. Para vários usuários ou réplicas, use um
 provedor de identidade e armazenamento de sessão compartilhado.

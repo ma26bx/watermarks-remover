@@ -158,6 +158,16 @@ class OAuthIntegrationTests(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertIsNone(self.state.client(client + "tamper"))
 
+    def test_desktop_null_or_missing_origin_requires_valid_session(self):
+        for origin in (None, "null"):
+            with self.subTest(origin=origin):
+                _, _, flow, cookie = self.start()
+                headers = {} if origin is None else {"Origin": origin}
+                p = {"flow": flow, "owner_key": self.state.owner_key}
+                self.assertEqual(self.request("POST", "/oauth/authorize", p, headers, form=True)[0], 400)
+                headers["Cookie"] = cookie
+                self.assertEqual(self.request("POST", "/oauth/authorize", p, headers, form=True)[0], 303)
+
     def test_direct_key_still_works_and_tokens_are_bound(self):
         self.assertTrue(self.state.authorized("Bearer " + self.state.owner_key))
         self.assertFalse(self.state.authorized("Bearer incorrect"))

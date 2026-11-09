@@ -226,7 +226,10 @@ class OAuthMixin:
                 self._oauth_send(201, {"client_id": state.sign("client", client), "redirect_uris": redirects,
                                       "token_endpoint_auth_method": "none", "grant_types": ["authorization_code", "refresh_token"], "response_types": ["code"]})
             elif path == "/oauth/authorize":
-                if self.headers.get("Origin") != state.base:
+                # Some desktop/sandboxed browser views omit Origin or send null.
+                # The unpredictable form token AND its secure cookie are still
+                # required below; a supplied foreign origin remains forbidden.
+                if self.headers.get("Origin") not in (None, "null", state.base):
                     raise ValueError("Invalid form origin")
                 p = self._oauth_body("application/x-www-form-urlencoded")
                 cookies = SimpleCookie(self.headers.get("Cookie", ""))
