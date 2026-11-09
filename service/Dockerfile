@@ -51,7 +51,7 @@ RUN curl -fsSL -o /tmp/c2patool.tar.gz \
     && rm -rf /tmp/c2patool /tmp/c2patool.tar.gz
 
 COPY scripts /app/scripts
-
+COPY mcp_server.py /app/scripts/mcp_server.py
 # COPY preserves the source modes, so a build host with a restrictive umask
 # (e.g. 027) lands these as 0640/0750 root:root -- unreadable and untraversable
 # for the unprivileged runtime user below, and the image only fails at
@@ -73,4 +73,4 @@ ENV WATERMARKS_SERVER_VERSION=${VERSION} \
 WORKDIR /app
 EXPOSE 8765
 ENTRYPOINT ["python3"]
-CMD ["/app/scripts/server.py", "--host", "0.0.0.0"]
+CMD ["/app/scripts/mcp_server.py"]
