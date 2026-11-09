@@ -2,8 +2,8 @@
 
 The owner authenticates on this server using WATERMARKS_SERVER_API_KEY. The key
 is never returned to the OAuth client. Existing direct bearer-key clients work.
-Pending consent, authorization codes and refresh tokens live in bounded memory;
-after a restart users may need to reconnect. DCR client IDs and access tokens
+Authorization codes and refresh tokens live in bounded memory; after a restart
+users may need to reconnect. Consent forms, DCR client IDs and access tokens
 are signed with a domain-separated key, so DCR registrations survive restarts.
 """
 
@@ -17,7 +17,6 @@ import re
 import secrets
 import threading
 import time
-from http.cookies import CookieError, SimpleCookie
 from urllib.parse import parse_qs, urlencode, urlparse
 
 
@@ -190,8 +189,11 @@ class OAuthMixin:
                     raise ValueError("Authorization code with S256 PKCE is required")
                 if p.get("resource") != state.resource or p.get("scope", SCOPE) != SCOPE:
                     raise ValueError("Invalid resource or scope")
-                cookie = secrets.token_urlsafe(32)
-                flow = state.put("flow", {"params": p, "cookie": hashlib.sha256(cookie.encode()).hexdigest()}, 600)
+                # Signed, expiring request state survives browser handoff and
+                # a service restart. Every submission must still supply the
+                # owner key explicitly; there is no ambient logged-in session.
+                flow = state.sign("flow", {"params": p, "exp": int(time.time()) + 600,
+                                           "nonce": secrets.token_urlsafe(32)})
                 page = ('<!doctype html><html lang="pt-BR"><meta charset="utf-8">'
                         '<meta name="viewport" content="width=device-width"><title>Conectar Watermarks Remover</title>'
                         '<h1>Conectar ao ChatGPT</h1><p>Autorize o ChatGPT a inspecionar e limpar os arquivos que você enviar.</p>'
@@ -199,7 +201,7 @@ class OAuthMixin:
                         '<form action="/oauth/authorize" method="post"><input type="hidden" name="flow" value="' + html.escape(flow, quote=True) + '">'
                         '<label>Chave de acesso <input name="owner_key" type="password" required autocomplete="off" maxlength="4096"></label>'
                         '<p><button type="submit">Autorizar conexão</button></p></form></html>')
-                self._oauth_send(200, page, {"Set-Cookie": "__Host-wm_oauth=" + cookie + "; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=600"}, True)
+                self._oauth_send(200, page, html_page=True)
             except (ValueError, UnicodeError) as exc:
                 self._oauth_error(str(exc))
         else:
@@ -227,15 +229,13 @@ class OAuthMixin:
                                       "token_endpoint_auth_method": "none", "grant_types": ["authorization_code", "refresh_token"], "response_types": ["code"]})
             elif path == "/oauth/authorize":
                 # Some desktop/sandboxed browser views omit Origin or send null.
-                # The unpredictable form token AND its secure cookie are still
-                # required below; a supplied foreign origin remains forbidden.
+                # The signed form and explicit owner key remain mandatory;
+                # a supplied foreign origin remains forbidden.
                 if self.headers.get("Origin") not in (None, "null", state.base):
                     raise ValueError("Invalid form origin")
                 p = self._oauth_body("application/x-www-form-urlencoded")
-                cookies = SimpleCookie(self.headers.get("Cookie", ""))
-                cookie = cookies.get("__Host-wm_oauth")
-                flow = state.get(p.get("flow", ""), "flow")
-                if not flow or not cookie or not hmac.compare_digest(flow["cookie"], hashlib.sha256(cookie.value.encode()).hexdigest()):
+                flow = state.verify(p.get("flow", ""), "flow")
+                if not flow:
                     raise ValueError("Authorization session expired; reconnect from ChatGPT")
                 with state.lock:
                     state.failures = [t for t in state.failures if t > time.time() - 60]
@@ -246,13 +246,10 @@ class OAuthMixin:
                         state.failures.append(time.time())
                         self._oauth_error("Incorrect owner key; reconnect from ChatGPT", 401, "access_denied")
                         return True
-                flow = state.get(p.get("flow", ""), "flow", consume=True)
-                if not flow:
-                    raise ValueError("Authorization session already used")
                 p = flow["params"]
                 code = state.put("code", p, 120)
                 location = p["redirect_uri"] + "?" + urlencode({"code": code, "state": p.get("state", ""), "iss": state.base})
-                self._oauth_send(303, {}, {"Location": location, "Set-Cookie": "__Host-wm_oauth=; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=0"})
+                self._oauth_send(303, {}, {"Location": location})
             else:
                 p = self._oauth_body("application/x-www-form-urlencoded")
                 client_id = p.get("client_id", "")
@@ -277,7 +274,7 @@ class OAuthMixin:
                     self._oauth_error("Unsupported grant", 400, "unsupported_grant_type")
                     return True
                 self._oauth_send(200, state.issue(client_id))
-        except (ValueError, UnicodeError, CookieError) as exc:
+        except (ValueError, UnicodeError) as exc:
             self._oauth_error(str(exc))
         return True
 

@@ -47,15 +47,18 @@ servidor. O cadastro DCR aceita somente os callbacks HTTPS do ChatGPT. Não é
 um provedor de identidade para oferecer contas a terceiros.
 
 Tokens de acesso expiram em uma hora. Tokens de renovação são rotacionados a
-cada uso e expiram em sete dias. Códigos, sessões de autorização e tokens de
+cada uso e expiram em sete dias. Códigos de autorização e tokens de
 renovação ficam em memória, com limite de entradas. Depois de um reinício ou
 uma nova implantação, a conexão pode pedir autorização novamente. Os clientes
 DCR continuam válidos enquanto a chave e o endereço público forem mantidos.
 Trocar a chave invalida clientes e tokens existentes.
 
-O formulário exige cookie seguro, código de sessão imprevisível e chave do
-proprietário. Origens externas explícitas são recusadas. Aplicativos que não
-enviam Origin ou enviam `null` são aceitos somente com a mesma sessão válida.
+O formulário contém os parâmetros OAuth assinados, com validade de dez minutos,
+e exige a chave do proprietário em cada envio. Não usa sessão de login ou
+credenciais automáticas e não depende de cookies. Origens externas explícitas
+são recusadas. Aplicativos que não enviam Origin ou enviam `null` precisam
+apresentar o mesmo formulário assinado e a chave correta. O formulário sobrevive
+a um reinício do serviço se a chave e o endereço público forem mantidos.
 Há limite global de dez tentativas de chave incorreta por minuto. Os logs do
 MCP omitem query strings e corpos. Para vários usuários ou réplicas, use um
 provedor de identidade e armazenamento de sessão compartilhado.

@@ -66,7 +66,7 @@ class OAuthIntegrationTests(unittest.TestCase):
         status, h, body = self.request("GET", "/oauth/authorize?" + urlencode(p))
         self.assertEqual(status, 200, body)
         flow = re.search(r'name="flow" value="([^"]+)"', body).group(1)
-        return client, verifier, flow, h["Set-Cookie"].split(";", 1)[0]
+        return client, verifier, flow, ""
 
     def code(self, client=None):
         client, verifier, flow, cookie = self.start(client)
@@ -142,10 +142,11 @@ class OAuthIntegrationTests(unittest.TestCase):
         self.assertNotEqual(new["refresh_token"], token["refresh_token"])
         self.assertEqual(self.request("POST", "/oauth/token", p, form=True)[2]["error"], "invalid_grant")
 
-    def test_password_and_csrf_required(self):
+    def test_password_and_signed_form_required(self):
         _, _, flow, cookie = self.start()
         p = {"flow": flow, "owner_key": self.state.owner_key}
-        self.assertEqual(self.request("POST", "/oauth/authorize", p, {"Origin": self.state.base}, form=True)[0], 400)
+        bad_form = {**p, "flow": flow + "tampered"}
+        self.assertEqual(self.request("POST", "/oauth/authorize", bad_form, {"Origin": self.state.base}, form=True)[0], 400)
         self.assertEqual(self.request("POST", "/oauth/authorize", p, {"Origin": "https://attacker.test", "Cookie": cookie}, form=True)[0], 400)
         p["owner_key"] = "wrong"
         self.assertEqual(self.request("POST", "/oauth/authorize", p, {"Origin": self.state.base, "Cookie": cookie}, form=True)[0], 401)
@@ -158,15 +159,24 @@ class OAuthIntegrationTests(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertIsNone(self.state.client(client + "tamper"))
 
-    def test_desktop_null_or_missing_origin_requires_valid_session(self):
+    def test_desktop_authorization_without_cookies(self):
         for origin in (None, "null"):
             with self.subTest(origin=origin):
                 _, _, flow, cookie = self.start()
                 headers = {} if origin is None else {"Origin": origin}
                 p = {"flow": flow, "owner_key": self.state.owner_key}
-                self.assertEqual(self.request("POST", "/oauth/authorize", p, headers, form=True)[0], 400)
-                headers["Cookie"] = cookie
                 self.assertEqual(self.request("POST", "/oauth/authorize", p, headers, form=True)[0], 303)
+
+    def test_consent_survives_service_restart_but_expired_form_fails(self):
+        _, _, flow, _ = self.start()
+        MCPHandler.oauth = OAuthState(self.state.owner_key, self.state.base)
+        p = {"flow": flow, "owner_key": self.state.owner_key}
+        self.assertEqual(self.request("POST", "/oauth/authorize", p, form=True)[0], 303)
+        data = self.state.verify(flow, "flow")
+        data.pop("kind")
+        data["exp"] = 0
+        p["flow"] = self.state.sign("flow", data)
+        self.assertEqual(self.request("POST", "/oauth/authorize", p, form=True)[0], 400)
 
     def test_direct_key_still_works_and_tokens_are_bound(self):
         self.assertTrue(self.state.authorized("Bearer " + self.state.owner_key))
