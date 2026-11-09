@@ -118,6 +118,20 @@ class OAuthIntegrationTests(unittest.TestCase):
                                                   "params": {"name": "inspect_file", "arguments": {"name": "teste.txt", "file": data}}}, headers)
         self.assertFalse(body["result"]["isError"], body)
         self.assertTrue(json.loads(body["result"]["content"][0]["text"])["ok"])
+        self.assertIn("text_analysis", json.loads(body["result"]["content"][0]["text"])["report"])
+
+    def test_inline_analysis_cleanup_and_feature_discovery(self):
+        _, token = self.token()
+        headers = {"Authorization": "Bearer " + token["access_token"]}
+        def call(name, arguments):
+            status, _, body = self.request("POST", "/mcp", {"jsonrpc": "2.0", "id": 4, "method": "tools/call",
+                "params": {"name": name, "arguments": arguments}}, headers)
+            self.assertEqual(status, 200)
+            self.assertFalse(body["result"]["isError"], body)
+            return json.loads(body["result"]["content"][0]["text"])
+        self.assertTrue(call("capabilities", {})["text_features"]["readability"])
+        self.assertEqual(call("analyze_text", {"text": "Você lê bem."})["counts"]["words"], 3)
+        self.assertEqual(call("normalize_text", {"text": "teste\u200b"})["text"], "teste")
 
     def test_code_is_one_use(self):
         p = self.code()

@@ -10,9 +10,27 @@ from urllib.parse import urlparse
 
 import server as core
 from mcp_oauth import OAuthMixin, configured_oauth
+from text_analysis import analyze_text, normalize_text
 
 
 TOOLS = [
+    {
+        "name": "analyze_text",
+        "description": "Analisa texto colado: legibilidade descritiva, repetições, Unicode e estilometria. Sem modelos ou diagnóstico de autoria. Até 100 mil caracteres por análise.",
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+        "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]},
+    },
+    {
+        "name": "normalize_text",
+        "description": "Retorna uma cópia do texto com limpeza Unicode e espaços normalizados, sem reescrever. Preserva sequências emoji legítimas. Até 100 mil caracteres. Normalização NFKC e homoglifos são opcionais.",
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+        "inputSchema": {"type": "object", "properties": {
+            "text": {"type": "string", "maxLength": 100000},
+            "options": {"type": "object", "additionalProperties": False, "properties": {
+                "nfkc": {"type": "boolean", "default": False},
+                "aggressive_homoglyphs": {"type": "boolean", "default": False},
+                "normalize_spaces": {"type": "boolean", "default": True}}}}, "required": ["text"]},
+    },
     {
         "name": "capabilities",
         "description": "Consulta os recursos disponiveis no servidor.",
@@ -114,7 +132,7 @@ class MCPHandler(OAuthMixin, core.Handler):
                     "capabilities": {"tools": {}},
                     "serverInfo": {
                         "name": "watermarks-remover",
-                        "version": "1.1.0",
+                        "version": "1.2.0",
                     },
                 }
             elif method == "ping":
@@ -131,11 +149,20 @@ class MCPHandler(OAuthMixin, core.Handler):
 
                 if name == "capabilities":
                     result = {"ok": True, **core.capabilities()}
+                    result["text_features"] = {"readability": True, "repetitions": True, "unicode_details": True,
+                                               "inline_analysis": True, "unicode_cleanup_without_rewrite": True,
+                                               "max_analysis_characters": 100000}
+                elif name == "analyze_text":
+                    result = analyze_text(args.get("text"))
+                elif name == "normalize_text":
+                    result = normalize_text(args.get("text"), args.get("options"))
                 elif name in ("inspect_file", "detect_file", "clean_file"):
                     data, filename = core._decode_input(args)
 
                     if name == "inspect_file":
                         result = core._inspect_payload(data, filename, False)
+                        if result.get("kind") == "text":
+                            result["report"]["text_analysis"] = analyze_text(data.decode("utf-8", errors="surrogateescape"))
                     elif name == "detect_file":
                         result = core._detect_payload(data, filename)
                     else:
