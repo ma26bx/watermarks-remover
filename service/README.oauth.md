@@ -39,6 +39,10 @@ Em cada servidor de `mcp.json`, configure:
 Depois da implantação, abra a conexão do plugin e autorize no Render. Confira
 o domínio antes de colar a chave. Teste `capabilities` antes de anexar um arquivo.
 O teste final precisa ser feito no ChatGPT com a conta do proprietário.
+Após aceitar a chave, a página confirma a autorização e volta ao callback
+validado do ChatGPT por navegação HTML. O link “Voltar ao ChatGPT” permite
+concluir a conexão se o aplicativo impedir a navegação automática. Não há
+redirecionamento externo do POST, que navegadores podem bloquear pela CSP.
 
 ## Limites deste serviço privado
 

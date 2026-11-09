@@ -3,6 +3,7 @@
 import base64
 import hashlib
 import http.client
+import html
 import json
 import re
 import sys
@@ -72,11 +73,15 @@ class OAuthIntegrationTests(unittest.TestCase):
         client, verifier, flow, cookie = self.start(client)
         status, h, body = self.request("POST", "/oauth/authorize", {"flow": flow, "owner_key": self.state.owner_key},
                                        {"Origin": self.state.base, "Cookie": cookie}, form=True)
-        self.assertEqual(status, 303, body)
-        query = parse_qs(urlparse(h["Location"]).query)
+        self.assertEqual(status, 200, body)
+        callback = html.unescape(re.search(r'<a target="_top" href="([^"]+)"', body).group(1))
+        self.assertIn('http-equiv="refresh"', body)
+        self.assertIn("Voltar ao ChatGPT", body)
+        self.assertNotIn("<form", body)
+        query = parse_qs(urlparse(callback).query)
         self.assertEqual(query["iss"], [self.state.base])
         self.assertEqual(query["state"], ["state-roundtrip"])
-        self.assertNotIn(self.state.owner_key, h["Location"])
+        self.assertNotIn(self.state.owner_key, body)
         return {"grant_type": "authorization_code", "client_id": client, "code": query["code"][0],
                 "code_verifier": verifier, "redirect_uri": CALLBACK, "resource": self.state.resource}
 
@@ -165,13 +170,13 @@ class OAuthIntegrationTests(unittest.TestCase):
                 _, _, flow, cookie = self.start()
                 headers = {} if origin is None else {"Origin": origin}
                 p = {"flow": flow, "owner_key": self.state.owner_key}
-                self.assertEqual(self.request("POST", "/oauth/authorize", p, headers, form=True)[0], 303)
+                self.assertEqual(self.request("POST", "/oauth/authorize", p, headers, form=True)[0], 200)
 
     def test_consent_survives_service_restart_but_expired_form_fails(self):
         _, _, flow, _ = self.start()
         MCPHandler.oauth = OAuthState(self.state.owner_key, self.state.base)
         p = {"flow": flow, "owner_key": self.state.owner_key}
-        self.assertEqual(self.request("POST", "/oauth/authorize", p, form=True)[0], 303)
+        self.assertEqual(self.request("POST", "/oauth/authorize", p, form=True)[0], 200)
         data = self.state.verify(flow, "flow")
         data.pop("kind")
         data["exp"] = 0

@@ -249,7 +249,18 @@ class OAuthMixin:
                 p = flow["params"]
                 code = state.put("code", p, 120)
                 location = p["redirect_uri"] + "?" + urlencode({"code": code, "state": p.get("state", ""), "iss": state.base})
-                self._oauth_send(303, {}, {"Location": location})
+                # A POST redirect to ChatGPT can be blocked by the login
+                # document's form-action CSP in Chromium. Finish with an HTML
+                # navigation instead, with a visible link for desktop views
+                # that suppress automatic navigation. Never echo the owner key.
+                callback = html.escape(location, quote=True)
+                page = ('<!doctype html><html lang="pt-BR"><meta charset="utf-8">'
+                        '<meta name="viewport" content="width=device-width">'
+                        '<meta http-equiv="refresh" content="0;url=' + callback + '">'
+                        '<title>Autorização aceita</title><h1>Autorização aceita</h1>'
+                        '<p>Conclua a conexão voltando ao ChatGPT.</p>'
+                        '<p><a target="_top" href="' + callback + '">Voltar ao ChatGPT</a></p></html>')
+                self._oauth_send(200, page, html_page=True)
             else:
                 p = self._oauth_body("application/x-www-form-urlencoded")
                 client_id = p.get("client_id", "")
