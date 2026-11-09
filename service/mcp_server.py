@@ -9,6 +9,7 @@ from http.server import ThreadingHTTPServer
 from urllib.parse import urlparse
 
 import server as core
+from mcp_oauth import OAuthMixin, configured_oauth
 
 
 TOOLS = [
@@ -66,24 +67,28 @@ TOOLS = [
 ]
 
 
-class MCPHandler(core.Handler):
+class MCPHandler(OAuthMixin, core.Handler):
+    oauth = configured_oauth(core.API_KEY)
+
     def do_GET(self):
+        if self._oauth_get():
+            return
         if urlparse(self.path).path == "/mcp":
             if not self._authorized():
-                self._respond(HTTPStatus.UNAUTHORIZED, {"error": "unauthorized"})
+                self._oauth_unauthorized()
             else:
                 self._respond(HTTPStatus.METHOD_NOT_ALLOWED, {"error": "Use POST"})
             return
         super().do_GET()
 
     def do_POST(self):
+        if self._oauth_post():
+            return
         if urlparse(self.path).path != "/mcp":
             return super().do_POST()
 
         if not self._authorized():
-            return self._respond(
-                HTTPStatus.UNAUTHORIZED, {"error": "unauthorized"}
-            )
+            return self._oauth_unauthorized()
 
         request = self._read_json()
         if not isinstance(request, dict):
@@ -109,7 +114,7 @@ class MCPHandler(core.Handler):
                     "capabilities": {"tools": {}},
                     "serverInfo": {
                         "name": "watermarks-remover",
-                        "version": "1.0.0",
+                        "version": "1.1.0",
                     },
                 }
             elif method == "ping":
@@ -182,3 +187,4 @@ if __name__ == "__main__":
     httpd = ThreadingHTTPServer((host, port), MCPHandler)
     print(f"Watermarks MCP iniciado na porta {port}", flush=True)
     httpd.serve_forever()
+
